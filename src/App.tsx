@@ -465,14 +465,20 @@ export default function App() {
             targetLevel: inputTargetLevel
           })
         });
-        const data = await res.json();
-        if (res.ok) {
-          setAuthSuccess(data.message);
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch (e) {
+          console.warn("Lỗi đọc dữ liệu phản hồi đăng ký:", e);
+        }
+
+        if (res.ok && data.success !== false) {
+          setAuthSuccess(data.message || 'Đăng ký học viên thành công! Tài khoản của bạn hiện đang chờ Admin phê duyệt.');
           setAuthMode('login'); // Switch to login after register
           // Clear registration inputs
           setInputPassword('');
         } else {
-          setAuthError(data.message || 'Lỗi đăng ký tài khoản.');
+          setAuthError(data.message || 'Lỗi đăng ký tài khoản. Vui lòng thử lại.');
         }
       } catch (err) {
         setAuthError('Không thể kết nối dịch vụ máy chủ.');

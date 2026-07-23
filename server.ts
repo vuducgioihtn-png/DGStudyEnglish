@@ -583,48 +583,53 @@ function writeClasses(classes: ClassroomEntry[]) {
 
 // AUTH - ĐĂNG KÝ TÀI KHOẢN (Đợi phê duyệt)
 app.post('/api/auth/register', (req: Request, res: Response) => {
-  const { username, password, fullName, grade, phoneNumber, learningGoal, targetLevel } = req.body;
-  if (!username || !password || !fullName) {
-    return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ thông tin đăng ký.' });
+  try {
+    const { username, password, fullName, grade, phoneNumber, learningGoal, targetLevel } = req.body || {};
+    if (!username || !password || !fullName) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ thông tin đăng ký.' });
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase();
+    const users = readUsers();
+
+    const exists = users.find(u => u.username === cleanUsername);
+    if (exists) {
+      return res.status(400).json({ success: false, message: 'Tên đăng nhập này đã tồn tại trên hệ thống.' });
+    }
+
+    // Determine if this is first admin register, else standard student
+    const role = cleanUsername === 'admin' ? 'admin' : 'student';
+    const approvalStatus = role === 'admin' ? 'approved' : 'pending';
+
+    const newUser: UserDBEntry = {
+      username: cleanUsername,
+      password: String(password).trim(),
+      fullName: String(fullName).trim(),
+      role,
+      approvalStatus,
+      registeredAt: new Date().toISOString(),
+      score: -1,
+      streak: 1,
+      completedLessons: [],
+      grade: grade !== undefined && grade !== null ? String(grade).trim() : undefined,
+      phoneNumber: phoneNumber !== undefined && phoneNumber !== null ? String(phoneNumber).trim() : undefined,
+      learningGoal: learningGoal !== undefined && learningGoal !== null ? String(learningGoal).trim() : undefined,
+      targetLevel: targetLevel !== undefined && targetLevel !== null ? String(targetLevel).trim() : undefined
+    };
+
+    users.push(newUser);
+    writeUsers(users);
+
+    return res.json({
+      success: true,
+      message: role === 'admin' 
+        ? 'Đăng ký tài khoản Admin thành công! Bạn có thể đăng nhập ngay.' 
+        : 'Đăng ký học viên thành công! Tài khoản của bạn hiện đang chờ Admin (Giáo viên) xem xét phê duyệt thì mới vào học được.'
+    });
+  } catch (err: any) {
+    console.error("Lỗi đăng ký tài khoản:", err);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng ký. Vui lòng thử lại.' });
   }
-
-  const cleanUsername = username.trim().toLowerCase();
-  const users = readUsers();
-
-  const exists = users.find(u => u.username === cleanUsername);
-  if (exists) {
-    return res.status(400).json({ success: false, message: 'Tên đăng nhập này đã tồn tại trên hệ thống.' });
-  }
-
-  // Determine if this is first admin register, else standard student
-  const role = cleanUsername === 'admin' ? 'admin' : 'student';
-  const approvalStatus = role === 'admin' ? 'approved' : 'pending';
-
-  const newUser: UserDBEntry = {
-    username: cleanUsername,
-    password: password.trim(),
-    fullName: fullName.trim(),
-    role,
-    approvalStatus,
-    registeredAt: new Date().toISOString(),
-    score: -1,
-    streak: 1,
-    completedLessons: [],
-    grade: grade ? grade.trim() : undefined,
-    phoneNumber: phoneNumber ? phoneNumber.trim() : undefined,
-    learningGoal: learningGoal ? learningGoal.trim() : undefined,
-    targetLevel: targetLevel ? targetLevel.trim() : undefined
-  };
-
-  users.push(newUser);
-  writeUsers(users);
-
-  res.json({
-    success: true,
-    message: role === 'admin' 
-      ? 'Đăng ký tài khoản Admin thành công! Bạn có thể đăng nhập ngay.' 
-      : 'Đăng ký học viên thành công! Tài khoản của bạn hiện đang chờ Admin (Giáo viên) xem xét phê duyệt thì mới vào học được.'
-  });
 });
 
 // AUTH - ĐĂNG NHẬP (Chỉ cho vào khi đã được duyệt)
