@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account information for student and admin",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "approvalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "registeredAt": { "type": "string" },
+        "roadmap": { "type": "object" },
+        "score": { "type": "number" },
+        "completedLessons": { "type": "array" },
+        "streak": { "type": "number" },
+        "grade": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "learningGoal": { "type": "string" },
+        "targetLevel": { "type": "string" },
+        "supportTickets": { "type": "array" },
+        "referralCode": { "type": "string" },
+        "referralsCount": { "type": "number" },
+        "consultingStatus": { "type": "string", "enum": ["none", "pending", "contacted"] },
+        "consultingNote": { "type": "string" }
+      },
+      "required": ["username", "password", "fullName", "role", "approvalStatus", "registeredAt"]
+    },
+    "Classroom": {
+      "title": "Classroom",
+      "description": "Virtual classroom spaces managed by teachers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "section": { "type": "string" },
+        "grade": { "type": "string" },
+        "subject": { "type": "string" },
+        "room": { "type": "string" },
+        "code": { "type": "string" },
+        "studentCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "themeColor": { "type": "string" },
+        "themePattern": { "type": "number" },
+        "announcements": { "type": "array" },
+        "enrolledStudents": { "type": "array" }
+      },
+      "required": ["id", "name", "code", "createdAt"]
+    },
+    "HomeworkData": {
+      "title": "HomeworkData",
+      "description": "Contains homework assignments and student submissions",
+      "type": "object",
+      "properties": {
+        "assignments": { "type": "array" },
+        "submissions": { "type": "array" }
+      },
+      "required": ["assignments", "submissions"]
+    }
+  },
+  "firestore": {
+    "/users/{username}": {
+      "schema": "User",
+      "description": "Detailed profile and progress of each registered student or admin"
+    },
+    "/classes/{classId}": {
+      "schema": "Classroom",
+      "description": "Classrooms, rosters, announcements and interactive feedback boards"
+    },
+    "/homework/data": {
+      "schema": "HomeworkData",
+      "description": "Unified database document storing structured assignments and submittals"
+    }
+  }
+}
