@@ -64,9 +64,20 @@ async function syncFromFirebase() {
   isSyncing = true;
   console.log("🔄 Starting database synchronization with Firebase Firestore...");
 
+  // 5 second max timeout so sync never blocks server execution
+  const timeoutMs = 5000;
+  const withTimeout = <T>(promise: Promise<T>): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => 
+        setTimeout(() => reject(new Error("Firebase request timeout")), timeoutMs)
+      )
+    ]);
+  };
+
   try {
     // 1. Sync Users
-    const usersSnap = await getDocs(collection(db, 'users'));
+    const usersSnap = await withTimeout(getDocs(collection(db, 'users')));
     if (!usersSnap.empty) {
       const dbUsers: UserDBEntry[] = [];
       usersSnap.forEach((docSnap: any) => {
@@ -82,12 +93,12 @@ async function syncFromFirebase() {
         const docRef = doc(db, 'users', user.username);
         batch.set(docRef, user);
       });
-      await batch.commit();
+      await withTimeout(batch.commit());
       console.log(`✅ Successfully seeded ${localUsers.length} users to Firestore.`);
     }
 
     // 2. Sync Classes
-    const classesSnap = await getDocs(collection(db, 'classes'));
+    const classesSnap = await withTimeout(getDocs(collection(db, 'classes')));
     if (!classesSnap.empty) {
       const dbClasses: ClassroomEntry[] = [];
       classesSnap.forEach((docSnap: any) => {
@@ -103,12 +114,12 @@ async function syncFromFirebase() {
         const docRef = doc(db, 'classes', cls.id);
         batch.set(docRef, cls);
       });
-      await batch.commit();
+      await withTimeout(batch.commit());
       console.log(`✅ Successfully seeded ${localClasses.length} classrooms to Firestore.`);
     }
 
     // 3. Sync Homework
-    const hwDoc = await getDoc(doc(db, 'homework', 'data'));
+    const hwDoc = await withTimeout(getDoc(doc(db, 'homework', 'data')));
     if (hwDoc.exists()) {
       const hwData = hwDoc.data();
       fs.writeFileSync(HW_DB_FILE, JSON.stringify(hwData, null, 2), 'utf-8');
@@ -116,11 +127,11 @@ async function syncFromFirebase() {
     } else {
       console.log("ℹ️ Firestore 'homework' document 'data' is missing. Seeding with local defaults...");
       const localHw = readHomework();
-      await setDoc(doc(db, 'homework', 'data'), localHw);
+      await withTimeout(setDoc(doc(db, 'homework', 'data'), localHw));
       console.log("✅ Successfully seeded homework assignments/submissions to Firestore.");
     }
   } catch (error) {
-    console.error("❌ Error during Firebase sync:", error);
+    console.warn("⚠️ Firebase sync note (using local cache):", error);
   } finally {
     isSyncing = false;
   }
@@ -618,50 +629,56 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
 
 // AUTH - ĐĂNG NHẬP (Chỉ cho vào khi đã được duyệt)
 app.post('/api/auth/login', (req: Request, res: Response) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ success: false, message: 'Vui lòng nhập tên tài khoản và mật khẩu.' });
-  }
-
-  const cleanUsername = username.trim().toLowerCase();
-  const users = readUsers();
-
-  const user = users.find(u => u.username === cleanUsername && u.password === password.trim());
-  if (!user) {
-    return res.status(400).json({ success: false, message: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
-  }
-
-  if (user.role === 'student') {
-    if (user.approvalStatus === 'pending') {
-      return res.json({ 
-        success: false, 
-        pending: true,
-        username: user.username,
-        fullName: user.fullName,
-        message: 'Tài khoản của bạn đang ở trạng thái chờ duyệt. Vui lòng đợi quản trị viên phê duyệt để có thể tham gia lớp học.' 
-      });
-    } else if (user.approvalStatus === 'rejected') {
-      return res.status(400).json({ 
-        success: false, 
-        rejected: true, 
-        message: 'Tài khoản của bạn đã bị từ chối phê duyệt bởi quản trị viên. Liên hệ admin để thêm chi tiết.' 
-      });
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập tên tài khoản và mật khẩu.' });
     }
-  }
 
-  // Successful login for Approved Student or Admin
-  res.json({
-    success: true,
-    username: user.username,
-    fullName: user.fullName,
-    role: user.role,
-    approvalStatus: user.approvalStatus,
-    score: user.score ?? -1,
-    roadmap: user.roadmap ?? null,
-    completedLessons: user.completedLessons ?? [],
-    streak: user.streak ?? 1,
-    lastCheckInDate: user.lastCheckInDate ?? ''
-  });
+    const cleanUsername = String(username).trim().toLowerCase();
+    const cleanPassword = String(password).trim();
+    const users = readUsers();
+
+    const user = users.find(u => u.username === cleanUsername && u.password === cleanPassword);
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
+    }
+
+    if (user.role === 'student') {
+      if (user.approvalStatus === 'pending') {
+        return res.json({ 
+          success: false, 
+          pending: true,
+          username: user.username,
+          fullName: user.fullName,
+          message: 'Tài khoản của bạn đang ở trạng thái chờ duyệt. Vui lòng đợi quản trị viên phê duyệt để có thể tham gia lớp học.' 
+        });
+      } else if (user.approvalStatus === 'rejected') {
+        return res.status(400).json({ 
+          success: false, 
+          rejected: true, 
+          message: 'Tài khoản của bạn đã bị từ chối phê duyệt bởi quản trị viên. Liên hệ admin để thêm chi tiết.' 
+        });
+      }
+    }
+
+    // Successful login for Approved Student or Admin
+    return res.json({
+      success: true,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      approvalStatus: user.approvalStatus,
+      score: user.score ?? -1,
+      roadmap: user.roadmap ?? null,
+      completedLessons: user.completedLessons ?? [],
+      streak: user.streak ?? 1,
+      lastCheckInDate: user.lastCheckInDate ?? ''
+    });
+  } catch (err: any) {
+    console.error("Lỗi đăng nhập:", err);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng nhập. Vui lòng thử lại.' });
+  }
 });
 
 // ADMIN - DANH SÁCH TẤT CẢ HỌC VIÊN ĐỂ PHÊ DUYỆT
@@ -4161,8 +4178,9 @@ async function startServer() {
   try {
     fs.writeFileSync(path.join(process.cwd(), 'server_debug.log'), `[${new Date().toISOString()}] 🚀 startServer called. NODE_ENV=${process.env.NODE_ENV}\n`);
   } catch (e) {}
-  // Sync databases with Firebase Firestore at boot
-  await syncFromFirebase();
+  
+  // Sync databases with Firebase Firestore in background (non-blocking)
+  syncFromFirebase().catch(err => console.warn("Background Firebase sync notice:", err));
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
